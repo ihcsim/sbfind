@@ -107,6 +107,7 @@ struct SBSearch {
     matcher_log_level2: RegexMatcher,
     matcher_log_level3: RegexMatcher,
     matcher_log_level4: RegexMatcher,
+    matcher_log_level5: RegexMatcher,
     matcher_timestamp1: RegexMatcher,
     matcher_timestamp2: RegexMatcher,
 }
@@ -127,6 +128,7 @@ impl SBSearch {
         let matcher_log_level2 = RegexMatcher::new(r#""level":"([^"]+)""#)?;
         let matcher_log_level3 = RegexMatcher::new(r"err=")?;
         let matcher_log_level4 = RegexMatcher::new(r"(?i)\[error\]")?;
+        let matcher_log_level5 = RegexMatcher::new(r"rpc error")?;
         let matcher_timestamp1 =
             RegexMatcher::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z")?;
         let matcher_timestamp2 = RegexMatcher::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}")?;
@@ -138,6 +140,7 @@ impl SBSearch {
             matcher_log_level2,
             matcher_log_level3,
             matcher_log_level4,
+            matcher_log_level5,
             matcher_timestamp1,
             matcher_timestamp2,
         })
@@ -271,6 +274,10 @@ impl SBSearch {
         {
             Ok("error")
         } else if let Ok(opt) = self.matcher_log_level4.find(line.as_bytes())
+            && opt.is_some()
+        {
+            Ok("error")
+        } else if let Ok(opt) = self.matcher_log_level5.find(line.as_bytes())
             && opt.is_some()
         {
             Ok("error")
