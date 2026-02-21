@@ -17,6 +17,7 @@ pub struct Entry {
     pub path: String,
     pub content: String,
     pub timestamp: Option<DateTime<Utc>>,
+    pub log_type: LogType,
 }
 
 impl Entry {
@@ -31,17 +32,15 @@ impl Entry {
             level = r;
         }
 
+        let log_type = sbsearch.log_type(path);
         Entry {
             content: String::from(s),
             level: String::from(level),
             path: String::from(path),
+            log_type,
             timestamp,
         }
     }
-}
-
-pub struct SearchResult {
-    pub entries_offset: Vec<Entry>,
 }
 
 impl fmt::Display for Entry {
@@ -49,6 +48,28 @@ impl fmt::Display for Entry {
         let out = self.content.clone();
         write!(f, "{}", out)
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum LogType {
+    #[default]
+    Workload,
+
+    System,
+}
+
+impl fmt::Display for LogType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self == &LogType::Workload {
+            write!(f, "Workload")
+        } else {
+            write!(f, "System")
+        }
+    }
+}
+
+pub struct SearchResult {
+    pub entries_offset: Vec<Entry>,
 }
 
 pub fn search(
@@ -294,6 +315,14 @@ impl SBSearch {
             Ok(Some(naive.and_utc()))
         } else {
             Ok(None)
+        }
+    }
+
+    fn log_type(&self, path: &str) -> LogType {
+        if path.contains("/nodes/") {
+            LogType::System
+        } else {
+            LogType::Workload
         }
     }
 }
@@ -668,6 +697,19 @@ mod tests {
         //     .unwrap();
         // let actual = sb_search.find_timestamp(line).unwrap();
         // assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_log_type() {
+        let sbsearch = SBSearch::new("", "").unwrap();
+        assert_eq!(
+            sbsearch.log_type("/nodes/node1/logs/kubelet.log"),
+            LogType::System
+        );
+        assert_eq!(
+            sbsearch.log_type("/kube-system/pods/logs/kube-apiserver.log"),
+            LogType::Workload
+        );
     }
 
     #[test]

@@ -38,6 +38,7 @@ fn handle_key_event(tui: &mut super::Tui, event: Event) {
                     KeyCode::Right => tui.nav_next_page(),
                     KeyCode::Char('0') => tui.nav_first_page(),
                     KeyCode::Char('9') => tui.nav_last_page(),
+                    KeyCode::Tab => tui.toggle_log_type(),
                     _ => {}
                 },
                 SearchMode::Insert => match key_event.code {
@@ -88,18 +89,21 @@ mod tests {
                 path: String::from("/path/to/log1"),
                 content: String::from("This is an info log entry."),
                 timestamp: Some(chrono::Utc::now()),
+                log_type: sbsearch::LogType::Workload,
             },
             sbsearch::Entry {
                 level: String::from("level=warning"),
                 path: String::from("/path/to/log2"),
                 content: String::from("This is an warning log entry."),
                 timestamp: Some(chrono::Utc::now()),
+                log_type: sbsearch::LogType::Workload,
             },
             sbsearch::Entry {
                 level: String::from("level=error"),
                 path: String::from("/path/to/log3"),
                 content: String::from("This is an error log entry."),
                 timestamp: Some(chrono::Utc::now()),
+                log_type: sbsearch::LogType::Workload,
             },
         ];
 

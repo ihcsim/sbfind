@@ -1,3 +1,4 @@
+use super::sbsearch::{Entry, LogType};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -37,7 +38,8 @@ pub struct Renderer<'a> {
     search_scroll: u16,
     search_value: String,
 
-    entries: &'a Vec<super::sbsearch::Entry>,
+    entries: &'a Vec<Entry>,
+    log_type: LogType,
     nav_state: &'a mut ListState,
     vertical_scroll_state: ScrollbarState,
 }
@@ -56,7 +58,8 @@ impl<'a> Renderer<'a> {
         search_cursor_show: bool,
         search_scroll: u16,
         search_value: String,
-        entries: &'a Vec<super::sbsearch::Entry>,
+        entries: &'a Vec<Entry>,
+        log_type: LogType,
         nav_state: &'a mut ListState,
         vertical_scroll_state: ScrollbarState,
     ) -> Self {
@@ -73,6 +76,7 @@ impl<'a> Renderer<'a> {
             search_scroll,
             search_value,
             entries,
+            log_type,
             nav_state,
             vertical_scroll_state,
         }
@@ -204,8 +208,17 @@ impl<'a> Renderer<'a> {
             lines = vec![ListItem::new("No log entries found.".to_string())];
         }
 
+        let title = Line::from(vec![
+            Span::styled(
+                format!(" | {} logs", self.log_type),
+                Style::default().fg(Color::White),
+            ),
+            Span::styled(" | (Tab)", Style::default().fg(Color::White)),
+            Span::styled(" toggle | ", Style::default()),
+        ]);
+
         let lines_count = lines.len();
-        let list_block = Block::default().borders(Borders::ALL);
+        let list_block = Block::default().borders(Borders::ALL).title_top(title);
         let list = List::new(lines)
             .block(list_block)
             .style(Style::default())

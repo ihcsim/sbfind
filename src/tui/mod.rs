@@ -8,7 +8,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use tui_input::Input;
 
-use super::sbsearch;
+use super::sbsearch::{self, Entry, LogType};
 
 mod event;
 mod render;
@@ -18,8 +18,8 @@ pub const DEFAULT_MAX_ENTRIES_PER_PAGE: usize = 100;
 #[derive(Debug, Default)]
 pub struct Tui {
     current_screen: Screen,
-    entries_cache: Vec<sbsearch::Entry>,
-    entries_offset: Vec<sbsearch::Entry>,
+    entries_cache: Vec<Entry>,
+    entries_offset: Vec<Entry>,
     exit: bool,
     nav_state: ListState,
     keyword: String,
@@ -36,6 +36,7 @@ pub struct Tui {
     page_reload: bool,
 
     last_saved_filename: String,
+    log_type: LogType,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -75,6 +76,8 @@ impl Tui {
             page_reload: true,
 
             last_saved_filename: String::new(),
+
+            log_type: LogType::Workload,
         }
     }
 
@@ -195,6 +198,7 @@ impl Tui {
             search_scroll as u16,
             self.search_input.value().to_string(),
             &self.entries_offset,
+            self.log_type.clone(),
             &mut self.nav_state,
             self.vertical_scroll_state,
         );
@@ -280,6 +284,14 @@ impl Tui {
         if self.page_final > 0 {
             self.page_goto = self.page_final;
             self.page_reload = true;
+        }
+    }
+
+    fn toggle_log_type(&mut self) {
+        if self.log_type == sbsearch::LogType::Workload {
+            self.log_type = sbsearch::LogType::System;
+        } else {
+            self.log_type = sbsearch::LogType::Workload;
         }
     }
 }
