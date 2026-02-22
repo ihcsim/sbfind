@@ -1,6 +1,7 @@
 use chrono::Local;
 use clap::Parser;
 use log::*;
+use sbsearch::SearchCache;
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
@@ -43,7 +44,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
 
     let mut terminal = ratatui::init();
-    tui::Tui::new(root_dir, keyword).run(&mut terminal)?;
+    let mut cache = SearchCache {
+        all: Vec::new(),
+        system: Vec::new(),
+        workload: Vec::new(),
+    };
+    tui::Tui::new(root_dir, keyword, &mut cache).run(&mut terminal)?;
     ratatui::restore();
     Ok(())
 }

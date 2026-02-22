@@ -38,7 +38,8 @@ pub struct Renderer<'a> {
     search_scroll: u16,
     search_value: String,
 
-    entries: &'a Vec<Entry>,
+    system_entries: &'a Vec<Entry>,
+    workload_entries: &'a Vec<Entry>,
     log_type: LogType,
     nav_state: &'a mut ListState,
     vertical_scroll_state: ScrollbarState,
@@ -58,7 +59,8 @@ impl<'a> Renderer<'a> {
         search_cursor_show: bool,
         search_scroll: u16,
         search_value: String,
-        entries: &'a Vec<Entry>,
+        system_entries: &'a Vec<Entry>,
+        workload_entries: &'a Vec<Entry>,
         log_type: LogType,
         nav_state: &'a mut ListState,
         vertical_scroll_state: ScrollbarState,
@@ -75,7 +77,8 @@ impl<'a> Renderer<'a> {
             search_cursor_show,
             search_scroll,
             search_value,
-            entries,
+            workload_entries,
+            system_entries,
             log_type,
             nav_state,
             vertical_scroll_state,
@@ -179,8 +182,13 @@ impl<'a> Renderer<'a> {
     }
 
     pub fn render_logs_section(&mut self, area: Rect, frame: &mut Frame) {
-        let mut lines: Vec<ListItem> = self
-            .entries
+        let entries = if self.log_type == LogType::System {
+            self.system_entries
+        } else {
+            self.workload_entries
+        };
+
+        let mut lines: Vec<ListItem> = entries
             .iter()
             .map(|entry| {
                 let width = frame.area().as_size().width as usize;

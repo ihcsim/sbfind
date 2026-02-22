@@ -82,8 +82,13 @@ mod tests {
 
     #[test]
     fn handle_key_events_on_main_screen() {
-        let tui = &mut Tui::new("sb_path", "pvc_name");
-        tui.entries_offset = vec![
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        let tui = &mut Tui::new("sb_path", "pvc_name", &mut cache);
+        tui.result.workload_entries_offset = vec![
             sbsearch::Entry {
                 level: String::from("level=info"),
                 path: String::from("/path/to/log1"),
@@ -110,6 +115,7 @@ mod tests {
         assert_eq!(tui.sbpath, "sb_path");
         assert_eq!(tui.keyword, "pvc_name");
         assert_eq!(tui.current_screen, Screen::Main);
+        assert_eq!(tui.log_type, LogType::Workload);
 
         // navigation keys
         let key_event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
@@ -152,6 +158,17 @@ mod tests {
         handle_key_event(tui, event);
         assert_eq!(tui.page_goto, tui.page_final);
 
+        // toggle between workload and system logs
+        let key_event = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+        let event = Event::Key(key_event);
+        handle_key_event(tui, event);
+        assert_eq!(tui.log_type, LogType::System);
+
+        let key_event = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+        let event = Event::Key(key_event);
+        handle_key_event(tui, event);
+        assert_eq!(tui.log_type, LogType::Workload);
+
         // confirm exit
         let key_event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
         let event = Event::Key(key_event);
@@ -166,7 +183,12 @@ mod tests {
 
     #[test]
     fn handle_key_events_on_search() {
-        let tui = &mut Tui::new("sb_path", "pvc_name");
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        let tui = &mut Tui::new("sb_path", "pvc_name", &mut cache);
         assert_eq!(tui.search_mode, SearchMode::Normal);
 
         // enable search mode
@@ -195,7 +217,12 @@ mod tests {
 
     #[test]
     fn handle_key_events_on_save() {
-        let tui = &mut Tui::new("sb_path", "pvc_name");
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        let tui = &mut Tui::new("sb_path", "pvc_name", &mut cache);
         tui.current_screen = Screen::Main;
         tui.last_saved_filename = String::new();
 

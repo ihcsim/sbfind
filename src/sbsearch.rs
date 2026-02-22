@@ -68,47 +68,43 @@ impl fmt::Display for LogType {
     }
 }
 
-pub struct SearchResult {
-    pub entries_offset: Vec<Entry>,
+#[derive(Debug)]
+pub struct SearchCache {
+    pub all: Vec<Entry>,
+    pub system: Vec<Entry>,
+    pub workload: Vec<Entry>,
 }
 
-pub fn search(
-    dir: &Path,
-    keyword: &str,
-    offset: usize,
-    limit: usize,
-    cache: &mut Vec<Entry>,
-) -> Result<SearchResult, Box<dyn Error>> {
-    if cache.is_empty() {
-        let root_dir = dir.to_str().unwrap();
-        let mut sbsearch = SBSearch::new(root_dir, keyword)?;
-        sbsearch.search_tree(dir, cache)?;
-        cache.sort_by(|a, b| {
-            // entries with incomplete timestamp are placed at the end
-            if a.timestamp.is_none() && b.timestamp.is_some() {
-                std::cmp::Ordering::Greater
-            } else if b.timestamp.is_none() && a.timestamp.is_some() {
-                std::cmp::Ordering::Less
-            } else {
-                a.timestamp.cmp(&b.timestamp)
-            }
-        });
-    } else {
-        debug!(
-            "using cached search results, total entries: {}",
-            cache.len()
-        );
-    }
+#[derive(Debug)]
+pub struct SearchResult {
+    pub system_entries_offset: Vec<Entry>,
+    pub workload_entries_offset: Vec<Entry>,
+}
 
-    let limit = limit.min(cache.len().saturating_sub(offset));
-    let entries_offset: Vec<Entry> = cache.iter().skip(offset).take(limit).cloned().collect();
-    info!(
-        "showing {} entries on page {}",
-        entries_offset.len(),
-        offset / limit + 1
-    );
+pub fn search(dir: &Path, keyword: &str, cache: &mut SearchCache) -> Result<(), Box<dyn Error>> {
+    let root_dir = dir.to_str().unwrap();
+    let mut sbsearch = SBSearch::new(root_dir, keyword)?;
+    sbsearch.search_tree(dir, &mut cache.all)?;
+    cache.all.sort_by(|a, b| {
+        // entries with incomplete or no timestamp are placed at the end
+        if a.timestamp.is_none() && b.timestamp.is_some() {
+            std::cmp::Ordering::Greater
+        } else if b.timestamp.is_none() && a.timestamp.is_some() {
+            std::cmp::Ordering::Less
+        } else {
+            a.timestamp.cmp(&b.timestamp)
+        }
+    });
 
-    Ok(SearchResult { entries_offset })
+    // split system entries and workload entries into two vectors for different views
+    cache.all.iter().for_each(|entry| {
+        if entry.log_type == LogType::System {
+            cache.system.push(entry.clone());
+        } else if entry.log_type == LogType::Workload {
+            cache.workload.push(entry.clone());
+        }
+    });
+    Ok(())
 }
 
 fn is_zip(path: &Path) -> io::Result<bool> {
@@ -330,184 +326,104 @@ impl SBSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui;
 
     #[test]
-    // this test asserts the search result of the first page
-    fn test_search_with_offset0() {
+    fn test_search_workload_entries() {
         let path = Path::new("testdata/support_bundle");
         let keyword = "vm-00";
-        let offset = 0;
-        let limit = tui::DEFAULT_MAX_ENTRIES_PER_PAGE;
-        let cache: &mut Vec<Entry> = &mut Vec::new();
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        assert!(search(path, keyword, &mut cache).is_ok());
+        assert_eq!(cache.all.len(), 244);
 
-        let result = search(path, keyword, offset, limit, cache).unwrap();
-        let entries_offset = &result.entries_offset;
-        assert!(!entries_offset.is_empty());
-        assert_eq!(entries_offset.len(), tui::DEFAULT_MAX_ENTRIES_PER_PAGE);
-        assert_eq!(cache.len(), 244);
+        let workload_entries = &cache.workload;
+        assert!(!workload_entries.is_empty());
+        assert_eq!(workload_entries.len(), 218);
 
-        // validate the first entry in the search result
-        assert_eq!(entries_offset[0].level, "info");
+        // validate the first workload entry in the search result
+        assert_eq!(workload_entries[0].level, "info");
         assert_eq!(
-            entries_offset[0].path,
+            workload_entries[0].path,
             "testdata/support_bundle/logs/harvester-system/harvester-webhook-6cb965f6d9-z24qs/harvester-webhook.log",
         );
         assert_eq!(
-            entries_offset[0].content.trim_end(),
+            workload_entries[0].content.trim_end(),
             r#"2025-12-30T21:57:51.388772685Z time="2025-12-30T21:57:51Z" level=info msg="PVC default/vm-00-disk-0-xx3er is not related to the VM image, skip patch""#
         );
         assert_eq!(
-            entries_offset[0].timestamp.unwrap(),
+            workload_entries[0].timestamp.unwrap(),
             "2025-12-30T21:57:51.388772685Z"
                 .parse::<DateTime<Utc>>()
                 .unwrap()
         );
 
-        // validate the last entry in the search result
-        let last_index = entries_offset.len() - 1;
-        assert_eq!(entries_offset[last_index].level, "UNKNOWN");
+        // validate the last workload entry in the search result
+        let last_index = workload_entries.len() - 1;
+        assert_eq!(workload_entries[last_index].level, "info");
         assert_eq!(
-            entries_offset[last_index].path,
-            "testdata/support_bundle/nodes/isim-dev.zip/isim-dev/logs/containerd.log",
-        );
-        assert_eq!(
-            entries_offset[last_index].content.trim_end(),
-            r#"2025-12-30 21:58:14.266 [INFO][52211] cni-plugin/k8s.go 446: Added Mac, interface name, and active container ID to endpoint ContainerID="41c85156546ac63f9402d1356a4d2dc00c4b807eed439c51678d1b94fac16f7c" Namespace="default" Pod="virt-launcher-vm-00-pb825" WorkloadEndpoint="isim--dev-k8s-virt--launcher--vm--00--pb825-eth0" endpoint=&v3.WorkloadEndpoint{TypeMeta:v1.TypeMeta{Kind:"WorkloadEndpoint", APIVersion:"projectcalico.org/v3"}, ObjectMeta:v1.ObjectMeta{Name:"isim--dev-k8s-virt--launcher--vm--00--pb825-eth0", GenerateName:"virt-launcher-vm-00-", Namespace:"default", SelfLink:"", UID:"e0762618-5577-4082-9f9e-eaa13b7521fa", ResourceVersion:"12670", Generation:0, CreationTimestamp:time.Date(2025, time.December, 30, 21, 57, 51, 0, time.Local), DeletionTimestamp:<nil>, DeletionGracePeriodSeconds:(*int64)(nil), Labels:map[string]string{"harvesterhci.io/vmName":"vm-00", "kubevirt.io":"virt-launcher", "kubevirt.io/created-by":"86079a85-5289-4e46-88ce-871a9eb2c0ae", "projectcalico.org/namespace":"default", "projectcalico.org/orchestrator":"k8s", "projectcalico.org/serviceaccount":"default", "vm.kubevirt.io/name":"vm-00"}, Annotations:map[string]string(nil), OwnerReferences:[]v1.OwnerReference(nil), Finalizers:[]string(nil), ManagedFields:[]v1.ManagedFieldsEntry(nil)}, Spec:v3.WorkloadEndpointSpec{Orchestrator:"k8s", Workload:"", Node:"isim-dev", ContainerID:"41c85156546ac63f9402d1356a4d2dc00c4b807eed439c51678d1b94fac16f7c", Pod:"virt-launcher-vm-00-pb825", Endpoint:"eth0", ServiceAccountName:"default", IPNetworks:[]string{"10.52.0.87/32"}, IPNATs:[]v3.IPNAT(nil), IPv4Gateway:"", IPv6Gateway:"", Profiles:[]string{"kns.default", "ksa.default.default"}, InterfaceName:"cali0b408b08bd7", MAC:"62:e0:b2:92:01:b6", Ports:[]v3.WorkloadEndpointPort(nil), AllowSpoofedSourcePrefixes:[]string(nil), QoSControls:(*v3.QoSControls)(nil)}}"#
-        );
-        assert_eq!(
-            entries_offset[last_index].timestamp.unwrap(),
-            "2025-12-30T21:58:14.266Z".parse::<DateTime<Utc>>().unwrap()
-        );
-    }
-
-    #[test]
-    // this test asserts the search result of the second page
-    fn test_search_with_offset1() {
-        let path = Path::new("testdata/support_bundle");
-        let keyword = "vm-00";
-        let offset = tui::DEFAULT_MAX_ENTRIES_PER_PAGE;
-        let limit = tui::DEFAULT_MAX_ENTRIES_PER_PAGE;
-        let cache: &mut Vec<Entry> = &mut Vec::new();
-
-        let result = search(path, keyword, offset, limit, cache).unwrap();
-        let entries_offset = &result.entries_offset;
-        assert!(!entries_offset.is_empty());
-        assert_eq!(entries_offset.len(), tui::DEFAULT_MAX_ENTRIES_PER_PAGE);
-        assert_eq!(cache.len(), 244);
-
-        // validate the first entry in the search result
-        assert_eq!(entries_offset[0].level, "UNKNOWN");
-        assert_eq!(
-            entries_offset[0].path,
-            "testdata/support_bundle/nodes/isim-dev.zip/isim-dev/logs/containerd.log",
-        );
-        assert_eq!(
-            entries_offset[0].content.trim_end(),
-            r#"2025-12-30 21:58:14.277 [INFO][52211] cni-plugin/k8s.go 532: Wrote updated endpoint to datastore ContainerID="41c85156546ac63f9402d1356a4d2dc00c4b807eed439c51678d1b94fac16f7c" Namespace="default" Pod="virt-launcher-vm-00-pb825" WorkloadEndpoint="isim--dev-k8s-virt--launcher--vm--00--pb825-eth0""#,
-        );
-        assert_eq!(
-            entries_offset[0].timestamp.unwrap(),
-            "2025-12-30T21:58:14.277Z".parse::<DateTime<Utc>>().unwrap()
-        );
-
-        // validate log line 178 (on page 2)
-        assert_eq!(entries_offset[77].level, "info");
-        assert_eq!(
-            entries_offset[77].path,
+            workload_entries[last_index].path,
             "testdata/support_bundle/logs/default/virt-launcher-vm-00-pb825/compute.log",
         );
         assert_eq!(
-            entries_offset[77].content.trim_end(),
-            r#"2025-12-30T21:58:17.092633347Z {"component":"virt-launcher","level":"info","msg":"Domain name event: default_vm-00","pos":"client.go:463","timestamp":"2025-12-30T21:58:17.092587Z"}"#,
+            workload_entries[last_index].content.trim_end(),
+            r#"2025-12-30T22:00:42.449112443Z {"component":"virt-launcher","kind":"","level":"info","msg":"Synced vmi","name":"vm-00","namespace":"default","pos":"server.go:208","timestamp":"2025-12-30T22:00:42.448989Z","uid":"86079a85-5289-4e46-88ce-871a9eb2c0ae"}"#
         );
         assert_eq!(
-            entries_offset[77].timestamp.unwrap(),
-            "2025-12-30T21:58:17.092633347Z"
-                .parse::<DateTime<Utc>>()
-                .unwrap()
-        );
-
-        // validate log line 193 (on page 2)
-        assert_eq!(entries_offset[92].level, "info");
-        assert_eq!(
-            entries_offset[92].path,
-            "testdata/support_bundle/logs/default/virt-launcher-vm-00-pb825/compute.log",
-        );
-        assert_eq!(
-            entries_offset[92].content.trim_end(),
-            r#"2025-12-30T21:58:17.350495965Z {"component":"virt-launcher","level":"info","msg":"No DRA GPU devices found for vmi default/vm-00","pos":"gpu_hostdev.go:42","timestamp":"2025-12-30T21:58:17.350259Z"}"#,
-        );
-        assert_eq!(
-            entries_offset[92].timestamp.unwrap(),
-            "2025-12-30T21:58:17.350495965Z"
-                .parse::<DateTime<Utc>>()
-                .unwrap()
-        );
-
-        // validate the last entry in the search result
-        let last_index = entries_offset.len() - 1;
-        assert_eq!(entries_offset[last_index].level, "info");
-        assert_eq!(
-            entries_offset[last_index].path,
-            "testdata/support_bundle/logs/harvester-system/harvester-8db57f44b-cnhts/apiserver.log",
-        );
-        assert_eq!(
-            entries_offset[last_index].content.trim_end(),
-            r#"2025-12-30T21:58:17.383672743Z time="2025-12-30T21:58:17Z" level=info msg="VM default/vm-00 is migratable, removing skipping descheduling annotation""#,
-        );
-        assert_eq!(
-            entries_offset[last_index].timestamp.unwrap(),
-            "2025-12-30T21:58:17.383672743Z"
+            workload_entries[last_index].timestamp.unwrap(),
+            "2025-12-30T22:00:42.449112443Z"
                 .parse::<DateTime<Utc>>()
                 .unwrap()
         );
     }
 
     #[test]
-    // this test asserts the search result of the final page
-    fn test_search_with_offset2() {
+    fn test_search_system_entries() {
         let path = Path::new("testdata/support_bundle");
         let keyword = "vm-00";
-        let offset = tui::DEFAULT_MAX_ENTRIES_PER_PAGE * 2;
-        let limit = tui::DEFAULT_MAX_ENTRIES_PER_PAGE;
-        let cache: &mut Vec<Entry> = &mut Vec::new();
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        assert!(search(path, keyword, &mut cache).is_ok());
+        assert_eq!(cache.all.len(), 244);
 
-        let result = search(path, keyword, offset, limit, cache).unwrap();
-        let entries_offset = &result.entries_offset;
-        assert!(!entries_offset.is_empty());
-        assert_eq!(entries_offset.len(), 44);
-        assert_eq!(cache.len(), 244);
+        let system_entries = &cache.system;
+        assert!(!system_entries.is_empty());
+        assert_eq!(system_entries.len(), 26);
 
-        // validate the first entry in the search result
-        assert_eq!(entries_offset[0].level, "info");
+        // validate the first workload entry in the search result
+        assert_eq!(system_entries[0].level, "info");
         assert_eq!(
-            entries_offset[0].path,
-            "testdata/support_bundle/logs/default/virt-launcher-vm-00-pb825/compute.log",
+            system_entries[0].path,
+            "testdata/support_bundle/nodes/isim-dev.zip/isim-dev/logs/containerd.log",
         );
         assert_eq!(
-            entries_offset[0].content.trim_end(),
-            r#"2025-12-30T21:58:17.798095640Z {"component":"virt-launcher","level":"info","msg":"Found PID for default_vm-00: 76","pos":"monitor.go:170","timestamp":"2025-12-30T21:58:17.797892Z"}"#,
+            system_entries[0].content.trim_end(),
+            r#"time="2025-12-30T21:58:14.213504533Z" level=info msg="RunPodSandbox for name:\"virt-launcher-vm-00-pb825\"  uid:\"e0762618-5577-4082-9f9e-eaa13b7521fa\"  namespace:\"default\"""#
         );
         assert_eq!(
-            entries_offset[0].timestamp.unwrap(),
-            "2025-12-30T21:58:17.798095640Z"
+            system_entries[0].timestamp.unwrap(),
+            "2025-12-30T21:58:14.213504533Z"
                 .parse::<DateTime<Utc>>()
                 .unwrap()
         );
 
-        // validate the last entry in the search result
-        let last_index = entries_offset.len() - 1;
-        assert_eq!(entries_offset[last_index].level, "UNKNOWN");
+        // validate the last workload entry in the search result
+        let last_index = system_entries.len() - 1;
+        assert_eq!(system_entries[last_index].level, "UNKNOWN");
         assert_eq!(
-            entries_offset[last_index].path,
+            system_entries[last_index].path,
             "testdata/support_bundle/nodes/isim-dev.zip/isim-dev/logs/containerd.log",
         );
         assert_eq!(
-            entries_offset[last_index].content.trim_end(),
-            r#"I1230 21:58:14.297331   52196 event.go:377] Event(v1.ObjectReference{Kind:"Pod", Namespace:"default", Name:"virt-launcher-vm-00-pb825", UID:"e0762618-5577-4082-9f9e-eaa13b7521fa", APIVersion:"v1", ResourceVersion:"12670", FieldPath:""}): type: 'Normal' reason: 'AddedInterface' Add eth0 [10.52.0.87/32] from k8s-pod-network"#,
+            system_entries[last_index].content.trim_end(),
+            r#"I1230 21:58:14.297331   52196 event.go:377] Event(v1.ObjectReference{Kind:"Pod", Namespace:"default", Name:"virt-launcher-vm-00-pb825", UID:"e0762618-5577-4082-9f9e-eaa13b7521fa", APIVersion:"v1", ResourceVersion:"12670", FieldPath:""}): type: 'Normal' reason: 'AddedInterface' Add eth0 [10.52.0.87/32] from k8s-pod-network"#
         );
-        assert!(entries_offset[last_index].timestamp.is_none());
+        assert!(system_entries[last_index].timestamp.is_none());
     }
 
     #[test]
@@ -690,13 +606,6 @@ mod tests {
         let expected = "2025-12-30T21:46:24Z".parse::<DateTime<Utc>>().unwrap();
         let actual = sb_search.find_timestamp(line).unwrap().unwrap();
         assert_eq!(actual, expected);
-
-        // let line = r#"I1230 21:46:28.112540    2133 container_manager_linux.go:275] "Creating Container Manager object based on Node Config" nodeConfig={"NodeName":"isim-dev","RuntimeCgroupsName":"","SystemCgroupsName":"","KubeletCgroupsName":"","KubeletOOMScoreAdj":-999,"ContainerRuntime":"","CgroupsPerQOS":true,"CgroupRoot":"/","CgroupDriver":"systemd","KubeletRootDir":"/var/lib/kubelet","ProtectKernelDefaults":false,"KubeReservedCgroupName":"","SystemReservedCgroupName":"","ReservedSystemCPUs":{},"EnforceNodeAllocatable":{"pods":{}},"KubeReserved":{"cpu":"588m"},"SystemReserved":{"cpu":"392m"},"HardEvictionThresholds":[{"Signal":"imagefs.available","Operator":"LessThan","Value":{"Quantity":null,"Percentage":0.05},"GracePeriod":0,"MinReclaim":null},{"Signal":"nodefs.available","Operator":"LessThan","Value":{"Quantity":null,"Percentage":0.05},"GracePeriod":0,"MinReclaim":null}],"QOSReserved":{},"CPUManagerPolicy":"none","CPUManagerPolicyOptions":null,"TopologyManagerScope":"container","CPUManagerReconcilePeriod":10000000000,"MemoryManagerPolicy":"None","MemoryManagerReservedMemory":null,"PodPidsLimit":-1,"EnforceCPULimits":true,"CPUCFSQuotaPeriod":100000000,"TopologyManagerPolicy":"none","TopologyManagerPolicyOptions":null,"CgroupVersion":2}"#;
-        // let expected = "2025-12-30T21:46:24Z"
-        //     .parse::<DateTime<Utc>>()
-        //     .unwrap();
-        // let actual = sb_search.find_timestamp(line).unwrap();
-        // assert_eq!(actual, expected);
     }
 
     #[test]

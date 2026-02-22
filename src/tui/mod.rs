@@ -8,18 +8,20 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use tui_input::Input;
 
-use super::sbsearch::{self, Entry, LogType};
+use super::sbsearch::{self, Entry, LogType, SearchCache, SearchResult};
 
 mod event;
 mod render;
 
 pub const DEFAULT_MAX_ENTRIES_PER_PAGE: usize = 100;
 
-#[derive(Debug, Default)]
-pub struct Tui {
+#[derive(Debug)]
+pub struct Tui<'a> {
+    cache: &'a mut SearchCache,
+    result: SearchResult,
+    log_type: LogType,
+
     current_screen: Screen,
-    entries_cache: Vec<Entry>,
-    entries_offset: Vec<Entry>,
     exit: bool,
     nav_state: ListState,
     keyword: String,
@@ -36,7 +38,6 @@ pub struct Tui {
     page_reload: bool,
 
     last_saved_filename: String,
-    log_type: LogType,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -54,12 +55,17 @@ enum SearchMode {
     Insert,
 }
 
-impl Tui {
-    pub fn new(support_bundle_path: &str, keyword: &str) -> Self {
+impl<'a> Tui<'a> {
+    pub fn new(support_bundle_path: &str, keyword: &str, cache: &'a mut SearchCache) -> Self {
         Self {
+            cache,
+            result: SearchResult {
+                system_entries_offset: Vec::new(),
+                workload_entries_offset: Vec::new(),
+            },
+            log_type: LogType::Workload,
+
             current_screen: Screen::Main,
-            entries_offset: Vec::new(),
-            entries_cache: Vec::new(),
             exit: false,
             nav_state: ListState::default().with_selected(Some(0)),
             keyword: String::from(keyword),
@@ -76,8 +82,6 @@ impl Tui {
             page_reload: true,
 
             last_saved_filename: String::new(),
-
-            log_type: LogType::Workload,
         }
     }
 
@@ -88,7 +92,7 @@ impl Tui {
         );
         while !self.exit {
             if self.page_reload {
-                self.read_entries_from_sb();
+                self.read_entries_from_sb()?;
             }
 
             terminal.draw(|frame| match self.current_screen {
@@ -118,33 +122,63 @@ impl Tui {
         Ok(())
     }
 
-    fn read_entries_from_sb(&mut self) {
+    fn read_entries_from_sb(&mut self) -> Result<(), Box<dyn Error>> {
         let root_path = Path::new(self.sbpath.as_str());
         let keyword = self.keyword.as_str();
-        let offset = self.page_goto * self.page_max_entries - self.page_max_entries;
-        let limit = self.page_max_entries;
-        let cache = &mut self.entries_cache;
+        if self.cache.all.is_empty() {
+            sbsearch::search(root_path, keyword, self.cache)?
+        }
+        info!(
+            "found {} entries matching '{}'",
+            self.cache.all.len(),
+            keyword
+        );
 
-        self.entries_offset = match sbsearch::search(root_path, keyword, offset, limit, cache) {
-            Ok(result) => {
-                info!("found {} entries matching '{}'", cache.len(), keyword);
-                result.entries_offset
-            }
-            Err(e) => {
-                error!("error reading entries from support bundle: {}", e);
-                Vec::new()
-            }
-        };
-        self.page_final = self.entries_cache.len().div_ceil(self.page_max_entries);
+        // paginate the entries in cache based on page_goto and page_max_entries
+        let offset = self.page_goto * self.page_max_entries - self.page_max_entries;
+        let limit = self
+            .page_max_entries
+            .min(self.cache.all.len().saturating_sub(offset));
+
+        self.result.system_entries_offset = self
+            .cache
+            .system
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .cloned()
+            .collect();
+        info!(
+            "found {} system entries on page {}",
+            self.result.system_entries_offset.len(),
+            offset / limit + 1
+        );
+
+        self.result.workload_entries_offset = self
+            .cache
+            .workload
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .cloned()
+            .collect();
+        info!(
+            "found {} workload entries on page {}",
+            self.result.workload_entries_offset.len(),
+            offset / limit + 1
+        );
+
+        self.page_final = self.cache.all.len().div_ceil(self.page_max_entries);
         self.page_reload = false;
         self.nav_state = ListState::default().with_selected(Some(0));
+        Ok(())
     }
 
     fn save_to_file(&mut self) -> io::Result<()> {
         if let Ok(file) = std::fs::File::create(&self.last_saved_filename) {
             info!("saving to file '{}'", &self.last_saved_filename);
             let mut writer = BufWriter::new(&file);
-            for entry in &self.entries_cache {
+            for entry in &self.cache.all {
                 write!(writer, "{}", entry)?;
             }
         }
@@ -157,15 +191,23 @@ impl Tui {
         self.exit = true
     }
 
+    fn focus_entries(&self) -> &Vec<Entry> {
+        if self.log_type == LogType::Workload {
+            &self.result.workload_entries_offset
+        } else {
+            &self.result.system_entries_offset
+        }
+    }
+
     fn draw_main(&mut self, frame: &mut Frame) {
         let sections = render::split_main_layout(frame.area());
         let offset = self.page_goto * self.page_max_entries - self.page_max_entries;
         let (filepath, selected) = match self.nav_state.selected() {
             Some(pos) => {
-                if self.entries_offset.is_empty() {
+                if self.focus_entries().is_empty() {
                     ("", 0)
                 } else {
-                    let path_str = self.entries_offset[pos].path.as_str();
+                    let path_str = self.focus_entries()[pos].path.as_str();
                     let name_str = self.sbpath.as_str();
                     if let Some(index) = path_str.find(name_str) {
                         (
@@ -190,14 +232,15 @@ impl Tui {
             self.keyword.clone(),
             self.page_final,
             self.page_goto,
-            self.entries_cache.len(),
+            self.cache.all.len(),
             selected,
             self.sbpath.clone(),
             search_cursor_pos as u16,
             search_cursor_show,
             search_scroll as u16,
             self.search_input.value().to_string(),
-            &self.entries_offset,
+            &self.result.system_entries_offset,
+            &self.result.workload_entries_offset,
             self.log_type.clone(),
             &mut self.nav_state,
             self.vertical_scroll_state,
@@ -213,7 +256,7 @@ impl Tui {
     }
 
     fn nav_next_line(&mut self) {
-        if self.entries_offset.is_empty() {
+        if self.focus_entries().is_empty() {
             return;
         }
 
@@ -221,7 +264,7 @@ impl Tui {
         self.vertical_scroll_state = self.vertical_scroll_state.position(self.vertical_scroll);
         let i = match self.nav_state.selected() {
             Some(i) => {
-                if i < self.entries_offset.len() - 1 {
+                if i < self.focus_entries().len() - 1 {
                     i + 1
                 } else {
                     i
@@ -254,8 +297,8 @@ impl Tui {
     }
 
     fn nav_last_line(&mut self) {
-        if !self.entries_offset.is_empty() {
-            let end = self.entries_offset.len() - 1;
+        if !self.focus_entries().is_empty() {
+            let end = self.focus_entries().len() - 1;
             self.vertical_scroll_state = self.vertical_scroll_state.position(end);
             self.nav_state.select(Some(end));
         }
@@ -288,10 +331,10 @@ impl Tui {
     }
 
     fn toggle_log_type(&mut self) {
-        if self.log_type == sbsearch::LogType::Workload {
-            self.log_type = sbsearch::LogType::System;
+        if self.log_type == LogType::Workload {
+            self.log_type = LogType::System;
         } else {
-            self.log_type = sbsearch::LogType::Workload;
+            self.log_type = LogType::Workload;
         }
     }
 }
@@ -307,41 +350,61 @@ mod tests {
     #[test]
     fn test_read_entries_from_sb() {
         let path = "./testdata/support_bundle";
-        let keyword = "vm-00";
-        let mut tui = Tui::new(path, keyword);
-        tui.read_entries_from_sb();
 
         // there are 218 entries containing "vm-00" in the testdata support bundle.
         // after paging, only 100 entries are loaded into entries_offset with a total
         // of 3 pages.
-        assert_eq!(tui.entries_cache.len(), 244);
-        assert_eq!(tui.entries_offset.len(), DEFAULT_MAX_ENTRIES_PER_PAGE);
+        let keyword = "vm-00";
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        let mut tui = Tui::new(path, keyword, &mut cache);
+        assert!(tui.read_entries_from_sb().is_ok());
         assert_eq!(tui.page_final, 3);
         assert_eq!(tui.nav_state, ListState::default().with_selected(Some(0)));
         assert!(!tui.page_reload);
-        tui.exit();
 
+        // check the number of entries loaded into entries_offset for workload and system logs
+        assert_eq!(tui.focus_entries().len(), DEFAULT_MAX_ENTRIES_PER_PAGE);
+        tui.toggle_log_type();
+        assert_eq!(tui.focus_entries().len(), 26);
+        assert_eq!(cache.all.len(), 244);
+
+        // use a different keyword
         let keyword = "vm-00-disk-0-";
-        let mut tui = Tui::new(path, keyword);
-        tui.read_entries_from_sb();
-        assert_eq!(tui.entries_cache.len(), 72);
-        assert_eq!(tui.entries_offset.len(), 72);
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        let mut tui = Tui::new(path, keyword, &mut cache);
+        assert!(tui.read_entries_from_sb().is_ok());
         assert_eq!(tui.page_final, 1);
         assert_eq!(tui.nav_state, ListState::default().with_selected(Some(0)));
         assert!(!tui.page_reload);
-        tui.exit();
+
+        // check the number of entries loaded into entries_offset for workload and system logs
+        assert_eq!(tui.focus_entries().len(), 72);
+        tui.toggle_log_type();
+        assert!(tui.focus_entries().is_empty());
+        assert_eq!(tui.cache.all.len(), 72);
     }
 
     #[test]
     fn test_save_to_file() {
         let path = "./testdata/support_bundle/logs";
         let keyword = "vm-00";
-        let mut tui = Tui::new(path, keyword);
-
+        let mut cache = SearchCache {
+            all: Vec::new(),
+            system: Vec::new(),
+            workload: Vec::new(),
+        };
+        let mut tui = Tui::new(path, keyword, &mut cache);
         let file = NamedTempFile::new().unwrap();
         tui.last_saved_filename = file.path().to_str().unwrap().to_string();
-
-        tui.read_entries_from_sb();
+        assert!(tui.read_entries_from_sb().is_ok());
 
         let result = tui.save_to_file();
         assert!(result.is_ok());
@@ -352,6 +415,6 @@ mod tests {
         for _line in reader.lines() {
             num_lines += 1;
         }
-        assert_eq!(num_lines, tui.entries_cache.len());
+        assert_eq!(num_lines, tui.cache.all.len());
     }
 }
