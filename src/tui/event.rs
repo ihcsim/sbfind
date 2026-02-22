@@ -84,8 +84,8 @@ mod tests {
     fn handle_key_events_on_main_screen() {
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         let tui = &mut Tui::new("sb_path", "pvc_name", &mut cache);
         tui.result.workload_entries_offset = vec![
@@ -185,8 +185,8 @@ mod tests {
     fn handle_key_events_on_search() {
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         let tui = &mut Tui::new("sb_path", "pvc_name", &mut cache);
         assert_eq!(tui.search_mode, SearchMode::Normal);
@@ -219,8 +219,8 @@ mod tests {
     fn handle_key_events_on_save() {
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         let tui = &mut Tui::new("sb_path", "pvc_name", &mut cache);
         tui.current_screen = Screen::Main;

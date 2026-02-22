@@ -46,8 +46,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = ratatui::init();
     let mut cache = SearchCache {
         all: Vec::new(),
-        system: Vec::new(),
-        workload: Vec::new(),
+        system_entries: Vec::new(),
+        workload_entries: Vec::new(),
     };
     tui::Tui::new(root_dir, keyword, &mut cache).run(&mut terminal)?;
     ratatui::restore();

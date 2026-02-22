@@ -71,8 +71,8 @@ impl fmt::Display for LogType {
 #[derive(Debug)]
 pub struct SearchCache {
     pub all: Vec<Entry>,
-    pub system: Vec<Entry>,
-    pub workload: Vec<Entry>,
+    pub system_entries: Vec<Entry>,
+    pub workload_entries: Vec<Entry>,
 }
 
 #[derive(Debug)]
@@ -99,9 +99,9 @@ pub fn search(dir: &Path, keyword: &str, cache: &mut SearchCache) -> Result<(), 
     // split system entries and workload entries into two vectors for different views
     cache.all.iter().for_each(|entry| {
         if entry.log_type == LogType::System {
-            cache.system.push(entry.clone());
+            cache.system_entries.push(entry.clone());
         } else if entry.log_type == LogType::Workload {
-            cache.workload.push(entry.clone());
+            cache.workload_entries.push(entry.clone());
         }
     });
     Ok(())
@@ -333,13 +333,13 @@ mod tests {
         let keyword = "vm-00";
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         assert!(search(path, keyword, &mut cache).is_ok());
         assert_eq!(cache.all.len(), 244);
 
-        let workload_entries = &cache.workload;
+        let workload_entries = &cache.workload_entries;
         assert!(!workload_entries.is_empty());
         assert_eq!(workload_entries.len(), 218);
 
@@ -385,13 +385,13 @@ mod tests {
         let keyword = "vm-00";
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         assert!(search(path, keyword, &mut cache).is_ok());
         assert_eq!(cache.all.len(), 244);
 
-        let system_entries = &cache.system;
+        let system_entries = &cache.system_entries;
         assert!(!system_entries.is_empty());
         assert_eq!(system_entries.len(), 26);
 

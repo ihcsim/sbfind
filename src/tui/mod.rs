@@ -126,6 +126,7 @@ impl<'a> Tui<'a> {
         let root_path = Path::new(self.sbpath.as_str());
         let keyword = self.keyword.as_str();
         if self.cache.all.is_empty() {
+            info!("rebuilding cache");
             sbsearch::search(root_path, keyword, self.cache)?
         }
         info!(
@@ -142,7 +143,7 @@ impl<'a> Tui<'a> {
 
         self.result.system_entries_offset = self
             .cache
-            .system
+            .system_entries
             .iter()
             .skip(offset)
             .take(limit)
@@ -151,12 +152,12 @@ impl<'a> Tui<'a> {
         info!(
             "found {} system entries on page {}",
             self.result.system_entries_offset.len(),
-            offset / limit + 1
+            offset / self.page_max_entries + 1
         );
 
         self.result.workload_entries_offset = self
             .cache
-            .workload
+            .workload_entries
             .iter()
             .skip(offset)
             .take(limit)
@@ -165,10 +166,9 @@ impl<'a> Tui<'a> {
         info!(
             "found {} workload entries on page {}",
             self.result.workload_entries_offset.len(),
-            offset / limit + 1
+            offset / self.page_max_entries + 1
         );
 
-        self.page_final = self.cache.all.len().div_ceil(self.page_max_entries);
         self.page_reload = false;
         self.nav_state = ListState::default().with_selected(Some(0));
         Ok(())
@@ -199,7 +199,19 @@ impl<'a> Tui<'a> {
         }
     }
 
+    fn focus_entries_total(&self) -> &Vec<Entry> {
+        if self.log_type == LogType::Workload {
+            &self.cache.workload_entries
+        } else {
+            &self.cache.system_entries
+        }
+    }
+
     fn draw_main(&mut self, frame: &mut Frame) {
+        self.page_final = self
+            .focus_entries_total()
+            .len()
+            .div_ceil(self.page_max_entries);
         let sections = render::split_main_layout(frame.area());
         let offset = self.page_goto * self.page_max_entries - self.page_max_entries;
         let (filepath, selected) = match self.nav_state.selected() {
@@ -226,13 +238,12 @@ impl<'a> Tui<'a> {
         let search_cursor_pos =
             self.search_input.visual_cursor().max(search_scroll) - search_scroll + 8;
         let search_cursor_show = self.search_mode == SearchMode::Insert;
-
         let mut r = render::Renderer::new(
             String::from(filepath),
             self.keyword.clone(),
             self.page_final,
             self.page_goto,
-            self.cache.all.len(),
+            self.focus_entries_total().len(),
             selected,
             self.sbpath.clone(),
             search_cursor_pos as u16,
@@ -336,6 +347,8 @@ impl<'a> Tui<'a> {
         } else {
             self.log_type = LogType::Workload;
         }
+        self.page_reload = true;
+        self.page_goto = 1;
     }
 }
 
@@ -357,38 +370,40 @@ mod tests {
         let keyword = "vm-00";
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         let mut tui = Tui::new(path, keyword, &mut cache);
         assert!(tui.read_entries_from_sb().is_ok());
-        assert_eq!(tui.page_final, 3);
         assert_eq!(tui.nav_state, ListState::default().with_selected(Some(0)));
         assert!(!tui.page_reload);
 
         // check the number of entries loaded into entries_offset for workload and system logs
         assert_eq!(tui.focus_entries().len(), DEFAULT_MAX_ENTRIES_PER_PAGE);
+        assert_eq!(tui.focus_entries_total().len(), 218);
         tui.toggle_log_type();
         assert_eq!(tui.focus_entries().len(), 26);
+        assert_eq!(tui.focus_entries_total().len(), 26);
         assert_eq!(cache.all.len(), 244);
 
         // use a different keyword
         let keyword = "vm-00-disk-0-";
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         let mut tui = Tui::new(path, keyword, &mut cache);
         assert!(tui.read_entries_from_sb().is_ok());
-        assert_eq!(tui.page_final, 1);
         assert_eq!(tui.nav_state, ListState::default().with_selected(Some(0)));
         assert!(!tui.page_reload);
 
         // check the number of entries loaded into entries_offset for workload and system logs
         assert_eq!(tui.focus_entries().len(), 72);
+        assert_eq!(tui.focus_entries_total().len(), 72);
         tui.toggle_log_type();
         assert!(tui.focus_entries().is_empty());
+        assert!(tui.focus_entries_total().is_empty());
         assert_eq!(tui.cache.all.len(), 72);
     }
 
@@ -398,8 +413,8 @@ mod tests {
         let keyword = "vm-00";
         let mut cache = SearchCache {
             all: Vec::new(),
-            system: Vec::new(),
-            workload: Vec::new(),
+            system_entries: Vec::new(),
+            workload_entries: Vec::new(),
         };
         let mut tui = Tui::new(path, keyword, &mut cache);
         let file = NamedTempFile::new().unwrap();
