@@ -13,7 +13,11 @@ resource logs and displayed them in chronological order. It uses the
 ![screenshot of the sbsearch tui displaying resource logs output](./img/tui.png)
 
 `sbsearch` searches the `logs/` and `nodes/**/logs` folders in the support bundle
-for the keyword.
+for the keyword. Entries from the `logs/` folder are considered workload logs,
+while entries from the `nodes/**/logs` are system logs.
+
+📝 System logs without timestamp or don't follow the RFC 3339 timestamp format are
+displayed at the end of the log list.
 
 ## Usage
 
@@ -73,10 +77,11 @@ Enter| Execute search
 
 ### Others
 
-Keys | Actions
------| -------
-`s`    | Save the current filtered logs to a file
-`q`    | Quit the program
+Keys   | Actions
+-------| -------
+`<tab>`  | Toggle between workload and system logs
+`s`      | Save the current filtered logs to a file
+`q`      | Quit the program
 
 ## Color Scheme
 
