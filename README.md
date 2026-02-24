@@ -56,6 +56,8 @@ Unarchive the support bundle before passing its path to `sbsearch`.
 Keys               | Actions
 -------------------| -------
 Up/Down arrow keys | Move up/down by one line
+`d`                  | Jump down by 25 lines
+`u`                  | Jump up by 25 lines
 `g`                  | Go to the beginning of the log
 `G`                  | Go to the end of the log
 

@@ -34,6 +34,8 @@ fn handle_key_event(tui: &mut super::Tui, event: Event) {
                     KeyCode::Char('g') => tui.nav_first_line(),
                     KeyCode::Up | KeyCode::Char('k') => tui.nav_prev_line(),
                     KeyCode::Down | KeyCode::Char('j') => tui.nav_next_line(),
+                    KeyCode::Char('u') => tui.nav_prev_jump(),
+                    KeyCode::Char('d') => tui.nav_next_jump(),
                     KeyCode::Left => tui.nav_prev_page(),
                     KeyCode::Right => tui.nav_next_page(),
                     KeyCode::Char('0') => tui.nav_first_page(),

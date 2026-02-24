@@ -30,7 +30,6 @@ pub struct Tui<'a> {
     search_mode: SearchMode,
     sbpath: String,
     vertical_scroll_state: ScrollbarState,
-    vertical_scroll: usize,
 
     page_final: usize,
     page_goto: usize,
@@ -74,7 +73,6 @@ impl<'a> Tui<'a> {
             search_mode: SearchMode::default(),
             sbpath: String::from(support_bundle_path),
             vertical_scroll_state: ScrollbarState::default(),
-            vertical_scroll: 0,
 
             page_final: 1,
             page_goto: 1,
@@ -271,35 +269,43 @@ impl<'a> Tui<'a> {
             return;
         }
 
-        self.vertical_scroll = self.vertical_scroll.saturating_add(1);
-        self.vertical_scroll_state = self.vertical_scroll_state.position(self.vertical_scroll);
-        let i = match self.nav_state.selected() {
-            Some(i) => {
-                if i < self.focus_entries().len() - 1 {
-                    i + 1
-                } else {
-                    i
-                }
-            }
+        let goto = match self.nav_state.selected() {
+            Some(i) => i.saturating_add(1).min(self.focus_entries().len() - 1),
             None => 0,
         };
-        self.nav_state.select(Some(i));
+        self.vertical_scroll_state = self.vertical_scroll_state.position(goto);
+        self.nav_state.select(Some(goto));
+    }
+
+    fn nav_next_jump(&mut self) {
+        if self.focus_entries().is_empty() {
+            return;
+        }
+
+        let goto = match self.nav_state.selected() {
+            Some(i) => i.saturating_add(25).min(self.focus_entries().len() - 1),
+            None => 0,
+        };
+        self.vertical_scroll_state = self.vertical_scroll_state.position(goto);
+        self.nav_state.select(Some(goto));
     }
 
     fn nav_prev_line(&mut self) {
-        self.vertical_scroll = self.vertical_scroll.saturating_sub(1);
-        self.vertical_scroll_state = self.vertical_scroll_state.position(self.vertical_scroll);
-        let i = match self.nav_state.selected() {
-            Some(i) => {
-                if i > 0 {
-                    i - 1
-                } else {
-                    i
-                }
-            }
+        let goto = match self.nav_state.selected() {
+            Some(i) => i.saturating_sub(1).max(0),
             None => 0,
         };
-        self.nav_state.select(Some(i));
+        self.vertical_scroll_state = self.vertical_scroll_state.position(goto);
+        self.nav_state.select(Some(goto));
+    }
+
+    fn nav_prev_jump(&mut self) {
+        let goto = match self.nav_state.selected() {
+            Some(i) => i.saturating_sub(25).max(0),
+            None => 0,
+        };
+        self.vertical_scroll_state = self.vertical_scroll_state.position(goto);
+        self.nav_state.select(Some(goto));
     }
 
     fn nav_first_line(&mut self) {
