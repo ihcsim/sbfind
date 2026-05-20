@@ -1,5 +1,7 @@
 # sbsearch
 
+[![AI Ready](https://img.shields.io/badge/AI--Ready-yes-brightgreen?style=flat)](https://github.com/johnpapa/ai-ready)
+
 `sbsearch` is a [Harvester support bundle][1] tool that search for keywords in the
 resource logs and displayed them in chronological order. It uses the
 [`grep` crate](https://crates.io/crates/grep) for fast searching and the
@@ -119,6 +121,17 @@ To build the release:
 ```sh
 make release
 ```
+
+## Contributing
+
+1. Fork the repository and create a branch from `main`
+2. Make your changes — run `make check` and `make test` before pushing
+3. Update `README.md` if you change keymaps, CLI arguments, or visible behavior
+4. Add an entry to `CHANGELOG.md` under `[Unreleased]`
+5. Open a pull request against `main` — the CI workflow will run automatically
+
+See [`AGENTS.md`](AGENTS.md) for a full guide to the codebase, build commands, and the maintenance
+matrix that lists which files to update together.
 
 ## License
 

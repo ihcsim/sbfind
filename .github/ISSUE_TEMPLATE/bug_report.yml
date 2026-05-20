@@ -1,0 +1,58 @@
+name: Bug Report
+description: Report a problem with sbsearch
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: sbsearch version
+      description: Run `sbsearch --version` to find the version
+      placeholder: "e.g. 0.0.4"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. macOS 14, Ubuntu 22.04"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the command you ran (omit sensitive paths if needed)
+      placeholder: |
+        1. Run `sbsearch -s <bundle_path> -k <keyword>`
+        2. Press `<key>`
+        3. Observe…
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug logs (optional)
+      description: Run with `--log-level debug` and attach the contents of `.sbsearch.log`
+      render: text
+
+  - type: textarea
+    id: support_bundle_info
+    attributes:
+      label: Support bundle details (optional)
+      description: Harvester version, bundle size, whether it is zipped or extracted

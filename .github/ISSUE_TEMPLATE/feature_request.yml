@@ -1,0 +1,46 @@
+name: Feature Request
+description: Suggest an improvement or new capability for sbsearch
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make sbsearch better? Describe it below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What workflow or limitation is this feature addressing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like to see
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you thought about?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Search / filtering
+        - TUI navigation / keymaps
+        - TUI rendering / display
+        - Log parsing (timestamps, levels)
+        - Support bundle handling (zip, directory)
+        - CLI / configuration
+        - Performance
+        - Other
+    validations:
+      required: true
