@@ -292,7 +292,7 @@ impl<'a> Tui<'a> {
 
     fn nav_prev_line(&mut self) {
         let goto = match self.nav_state.selected() {
-            Some(i) => i.saturating_sub(1).max(0),
+            Some(i) => i.saturating_sub(1),
             None => 0,
         };
         self.vertical_scroll_state = self.vertical_scroll_state.position(goto);
@@ -301,7 +301,7 @@ impl<'a> Tui<'a> {
 
     fn nav_prev_jump(&mut self) {
         let goto = match self.nav_state.selected() {
-            Some(i) => i.saturating_sub(25).max(0),
+            Some(i) => i.saturating_sub(25),
             None => 0,
         };
         self.vertical_scroll_state = self.vertical_scroll_state.position(goto);
