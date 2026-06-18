@@ -1,0 +1,21 @@
+name: sbom
+on:
+  workflow_dispatch:
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: make release
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: rootfs
+          scan-ref: target/release/sbsearch
+          format: spdx-json
+          output: sbsearch-bin-sbom.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbsearch-bin-sbom.spdx.json
