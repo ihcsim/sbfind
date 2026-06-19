@@ -1,0 +1,50 @@
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: create this new tag and use it as the release
+        required: true
+        type: string
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: build release
+        run: make release
+      - name: generate sbom
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: rootfs
+          scan-ref: target/release/sbsearch
+          format: spdx-json
+          output: target/release/sbom.spdx.json
+      - name: create attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: target/release/sbsearch
+          sbom-path: target/release/sbom.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: target/release/sbom.spdx.json
+      - name: create tag
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git tag -a "${{ inputs.release_tag }}" -m "Release ${{ inputs.release_tag }}"
+          git push origin "${{ inputs.release_tag }}"
+      - name: create gh release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          generate_release_notes: true
+          working_directory: target/release
+          files: |
+            sbsearch
+            sbom.spdx.json
